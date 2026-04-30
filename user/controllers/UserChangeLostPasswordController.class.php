@@ -88,7 +88,7 @@ class UserChangeLostPasswordController extends AbstractController
 	{
 		$maintain_config = MaintenanceConfig::load();
 
-		PHPBoostAuthenticationMethod::update_auth_infos($user_id, null, null, KeyGenerator::string_hash($password), null, '');
+		PHPBoostAuthenticationMethod::update_auth_infos($user_id, null, null, $password, null, '');
 
 		$auth_infos = array();
 		try {
