@@ -42,7 +42,7 @@ class PHPBoostAuthenticationMethod extends AuthenticationMethod
 	public function __construct($login, $password)
 	{
 		$this->login = $login;
-		$this->password = KeyGenerator::string_hash($password);
+		$this->password = $password;
 		$this->querier = PersistenceContext::get_querier();
 	}
 
@@ -213,18 +213,32 @@ class PHPBoostAuthenticationMethod extends AuthenticationMethod
 
 	private function check_user_password($user_id)
 	{
-		$condition = 'WHERE user_id=:user_id and password=:password';
-		$parameters = array('user_id' => $user_id, 'password' => $this->password);
-		$match = $this->querier->row_exists(DB_TABLE_INTERNAL_AUTHENTICATION, $condition, $parameters, '*');
+		$row = $this->querier->select_single_row(DB_TABLE_INTERNAL_AUTHENTICATION,
+			array('password'),
+			'WHERE user_id=:user_id',
+			array('user_id' => $user_id)
+		);
+		$stored = $row['password'];
+
+	    $match = password_verify($this->password, $stored);
+	
+		// Migration depuis l'ancien SHA256 à la volée
+		if (!$match && hash_equals($stored, KeyGenerator::string_hash($this->password)))
+		{
+			$match = true;
+			$this->querier->update(
+				DB_TABLE_INTERNAL_AUTHENTICATION,
+				array('password' => password_hash($this->password, PASSWORD_BCRYPT)),
+				'WHERE user_id=:user_id',
+				array('user_id' => $user_id)
+			);
+		}
+	
 		if ($match)
-		{
 			$this->connection_attempts = 0;
-		}
-		else
-		{
+	    else
 			$this->connection_attempts++;
-		}
-		return $match;
+	    return $match;
 	}
 
 	private function update_user_info($user_id)
@@ -256,7 +270,7 @@ class PHPBoostAuthenticationMethod extends AuthenticationMethod
 			$columns['approved'] = (int)$approved;
 
 		if (!empty($password))
-			$columns['password'] = $password;
+			$columns['password'] = password_hash($password, PASSWORD_BCRYPT);
 
 		if ($registration_pass !== null)
 			$columns['registration_pass'] = $registration_pass;
